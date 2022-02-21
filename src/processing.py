@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-import pc_io
+from src import pc_io
 """
 Data loading and processing.
 Code adpated from https://github.com/mauriceqch/pcc_geo_cnn

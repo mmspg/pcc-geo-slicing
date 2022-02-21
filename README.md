@@ -1,4 +1,4 @@
-# Latent Space Slicing For Enhanced Entropy Modeling in Learning-Based Point Cloud Geometry Compression
+﻿# Latent Space Slicing For Enhanced Entropy Modeling in Learning-Based Point Cloud Geometry Compression
 
 - **Authors**: Nicolas Frank, Davi Lazzarotto and Touradj Ebrahimi.
 - **Affiliation**: Multimedia Signal Processing Group (MMSPG), Ecole Polytechnique Fédérale de Lausanne.
@@ -67,7 +67,7 @@ For a list of all the compression parameters, run:
 
 After compressing, you can decompress the blocks and merge them back into a point cloud. In the previous step, the optimal threshold has been computed, so it is used in the decompression stage:
 
-`python point_cloud_compression_slice_conditioning.py '--experiment' 'PCC_5slices_lmbda1000' '--model_path' '/models/' 'decompress'  '--input_glob' '/compressed/*.tfci' '--output_dir' '/decompressed/' '--ori_dir' '/original/pointclouds_rgb/' '--reconstructed_dir' '/reconstructed/'`
+`python point_cloud_compression_slice_conditioning.py '--experiment' 'PCC_5slices_lmbda1000' '--model_path' '/models/' 'decompress' '--adaptive'  '--input_glob' '/compressed/*.tfci' '--output_dir' '/decompressed/' '--ori_dir' '/original/pointclouds_rgb/' '--reconstructed_dir' '/reconstructed/'`
 
 For a list of all the decompression parameters, run:
 
@@ -76,7 +76,7 @@ For a list of all the decompression parameters, run:
 
 ### Evaluation
 
-The reconstructed point clouds can now be evaluated. The resulting csv file will be saved in a directory called 'Results', under the name of the experiment:
+The reconstructed point clouds can now be evaluated. The resulting csv file is specified to be saved in a directory called 'Results', under the name of the experiment:
 
 `python point_cloud_compression_slice_conditioning.py '--experiment' 'PCC_5slices_lmbda1000' '--model_path' '/models/' 'evaluate' '--ori_dir' '/original/pointclouds_rgb/' '--dec_dir' 'reconstructed/' '--nor_dir' '/original/pointclouds_rgb_n/' '--bin_dir' '/compressed/' '--output_dir' '/Results/'`
 

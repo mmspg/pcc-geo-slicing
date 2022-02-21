@@ -128,7 +128,7 @@ def po2po(block1_pc, block2_pc):
 
     return po2po_mse
 
-def compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 50):
+def compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 50, verbose = 1):
     """
     Computes the optimal threshold used to convert the output of the
     neural network into an occupancy map.
@@ -139,9 +139,13 @@ def compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 50):
     delta_t: Space between two consecutive threshold
              during the grid search.
     breakpt: Number of thresholds to try without improvement
+    verbose: Level of verbosity. Either 0 (no printing),
+             1 (partial printing) or 2 (full printing)
                  
     Output: The optimal threshold.
     """
+    
+    assert verbose in {0,1,2}, "Verbose should be either 0(no printing), 1 (partial printing) or 2 (full printing)"
     # Decompress the latent tensor.
     x_hat = tf.squeeze(model.decompress(*tensors))
     x_hat = x_hat.numpy()
@@ -168,7 +172,8 @@ def compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 50):
             # found so far, an empty block is the best solution.
             mean_pt = np.round(np.mean(pc, axis = 0))[np.newaxis, :]
             test_mse = po2po(pc, mean_pt)
-            print(f'The D1 error for the mean point is {test_mse}, against {min_mse} for the current best threshold.')
+            if verbose == 2:
+                print(f'The D1 error for the mean point is {test_mse}, against {min_mse} for the current best threshold.')
                     
             # If the mean point is better than current threshold,
             # return an empty block (threshold = 1).
@@ -179,7 +184,8 @@ def compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 50):
             # low, return the fixed threshold.
             if best_threshold.numpy() < 0.1:
                 best_threshold = tf.constant(0.5)
-            print(f' Best threshold found: {best_threshold.numpy()}')
+            if verbose >= 1:
+                print(f' Best threshold found: {best_threshold.numpy()}')
             return best_threshold
                 
         # Update the current best threshold if necessary.
@@ -187,10 +193,12 @@ def compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 50):
             min_mse = mse
             best_threshold = threshold
             num_not_improve = 0
-            print(f'D1 mse value of {min_mse} found at t = {best_threshold.numpy()}')
+            if verbose == 2:
+                print(f'D1 mse value of {min_mse} found at t = {best_threshold.numpy()}')
         else:
             num_not_improve += 1
-            print(f'Not a better threshold mse = {mse} at t = {threshold.numpy()}')
+            if verbose == 2:
+                print(f'Not a better threshold mse = {mse} at t = {threshold.numpy()}')
             if num_not_improve == breakpt:
                 return best_threshold
 
