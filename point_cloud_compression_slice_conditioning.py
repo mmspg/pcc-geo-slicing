@@ -10,15 +10,15 @@ import argparse
 import glob
 import sys
 import copy
-from processing import *
-from compression_utilities import *
-from evaluate import *
+from src.processing import *
+from src.compression_utilities import *
+from src.evaluate import *
 from absl import app
 from absl.flags import argparse_flags
 import tensorflow_compression as tfc
 import datetime
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-from focal_loss import focal_loss
+from src.focal_loss import focal_loss
 import functools
 import itertools
 import time
@@ -624,7 +624,7 @@ def compress(args):
         
         # Calculate the adaptive threshold.
         if args.adaptive:
-            best_threshold = compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 150)
+            best_threshold = compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 150, verbose = 1)
         else:
             best_threshold = tf.constant(0.5)
             
