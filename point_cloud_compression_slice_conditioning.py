@@ -10,9 +10,17 @@ import argparse
 import glob
 import sys
 import copy
-from src.processing import *
-from src.compression_utilities import *
-from src.evaluate import *
+import os
+import tensorflow as tf
+from src import pc_io
+import numpy as np
+import pandas as pd
+from pyntcloud import PyntCloud
+
+
+from src.processing import load_pc, pc_to_tf, process_x, create_dataset
+from src.compression_utilities import pack_tensor, unpack_tensor, po2po, compute_optimal_threshold
+from src.evaluate import merge_pc, evaluate_pc
 from absl import app
 from absl.flags import argparse_flags
 import tensorflow_compression as tfc
@@ -23,7 +31,7 @@ import functools
 import itertools
 import time
 from tqdm.auto import tqdm
-import os
+
 
 
 
