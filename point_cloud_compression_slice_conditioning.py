@@ -23,6 +23,7 @@ import functools
 import itertools
 import time
 from tqdm.auto import tqdm
+import os
 
 
 
@@ -635,7 +636,7 @@ def compress(args):
             os.mkdir(args.output_dir)
             
         # Write the resulting bitstream in a file.
-        with open(args.output_dir + files[i].split('/')[-1][:-4] + '.tfci', 'wb') as f:
+        with open(os.path.join(args.output_dir, os.path.split(files[i])[-1][:-4] + '.tfci'), 'wb') as f:
             f.write(bitstream)
             
         if (i+1) % 1000 == 0:
@@ -725,7 +726,7 @@ def decompress(args):
             os.mkdir(args.output_dir)
         
         # Write the reconstructed block in a PLY file.
-        pc_io.write_df(args.output_dir + dec.split('/')[-1][:-5] + '.ply', pc_io.pa_to_df(pa))
+        pc_io.write_df(os.path.join(args.output_dir, os.path.split(dec)[-1][:-5] + '.ply'), pc_io.pa_to_df(pa))
             
             
         if (i+1) % 50 == 0:
