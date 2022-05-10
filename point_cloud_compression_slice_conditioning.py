@@ -620,9 +620,10 @@ def compress(args):
         args.resolution, args.channels_last)
     points = pc_io.load_points(files[:args.input_length], p_min, p_max)
 
-    print('Starting compression')
+    print('Starting compression...')
     start = time.time()
-    for i, pc in enumerate(points):
+
+    for i, pc in tqdm(enumerate(points), total=len(points)):
         
         # Process the input for the neural network.
         tensor = pc_to_tf(pc, dense_tensor_shape, args.channels_last)
@@ -633,7 +634,7 @@ def compress(args):
         
         # Calculate the adaptive threshold.
         if args.adaptive:
-            best_threshold = compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 150, verbose = 1)
+            best_threshold = compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 150, verbose = 0)
         else:
             best_threshold = tf.constant(0.5)
             
@@ -647,8 +648,6 @@ def compress(args):
         with open(os.path.join(args.output_dir, os.path.split(files[i])[-1][:-4] + '.tfci'), 'wb') as f:
             f.write(bitstream)
             
-        if (i+1) % 1000 == 0:
-            print(f'Compressed {i+1} files out of {len(points)}')
     print(f'Done. Total compression time: {time.time() - start}s')
 
 def decompress(args):
