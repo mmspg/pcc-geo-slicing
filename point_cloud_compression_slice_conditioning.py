@@ -662,7 +662,7 @@ def compress(args):
         if not os.path.isdir(args.output_dir):
                 os.mkdir(args.output_dir)
 
-        with open(os.path.join(args.output_dir, pc_file[:-4] + '.bin'), 'wb') as f:
+        with open(os.path.join(args.output_dir, args.experiment, pc_file[:-4] + '.bin'), 'wb') as f:
             f.write(pc_bitstream)
             
     print(f'Done. Total compression time: {time.time() - start}s')
@@ -777,7 +777,7 @@ def decompress(args):
             os.mkdir(args.output_dir)
         
         # Write the reconstructed block in a PLY file.
-        pc_io.write_df(os.path.join(args.output_dir, os.path.split(bin_filepath)[-1][:-4] + '.ply'), pc_io.pa_to_df(pa))
+        pc_io.write_df(os.path.join(args.output_dir, args.experiment, os.path.split(bin_filepath)[-1][:-4] + '.ply'), pc_io.pa_to_df(pa))
             
             
         #if (i+1) % 50 == 0:
@@ -1038,8 +1038,8 @@ def main(args):
         nor_files = sorted([f for f in os.listdir(args.nor_dir) if '.ply' in f])
         print(f'There are {len(nor_files)} .ply files.')
 
-        com_files = sorted([f for f in os.listdir(args.bin_dir) if '.tfci' in f])
-        print(f'There are {len(com_files)} compressed .tfci files.')
+        com_files = sorted([f for f in os.listdir(os.path.join(args.bin_dir, args.experiment)) if '.bin' in f])
+        print(f'There are {len(com_files)} compressed .bin files.')
 
         res_dec_files = sorted([f for f in os.listdir(os.path.join(args.dec_dir, args.experiment)) if '.ply' in f])
         print(f'There are {len(res_dec_files)} restored decompressed .ply files.')
@@ -1053,11 +1053,7 @@ def main(args):
             'bin_bytes': [],
             'bpp': [],
             'g_metric_D1': [],
-            'g_metric_D2': [],
-            'c_metric_ch1': [],
-            'c_metric_ch2': [],
-            'c_metric_ch3': [],
-            'c_metric': [] })
+            'g_metric_D2': [] })
 
         for idx, ori_file in tqdm_handle:
             ori_pc_path = os.path.join(args.ori_dir, ori_file)
@@ -1066,16 +1062,14 @@ def main(args):
             
             ori_pc = PyntCloud.from_file(ori_pc_path)
             ori_num_points = ori_pc.points.shape[0]
-            
-            cur_com_files = [f for f in com_files if f[:-26] in ori_file]
-            cur_com_bytes = 0
-            for cur_com_file in cur_com_files:
-                cur_com_bytes += os.stat(os.path.join(args.bin_dir, cur_com_file)).st_size
+
+            com_path = os.path.join(args.bin_dir, args.experiment, com_files[idx])
+            com_bytes = os.stat(com_path).st_size
                 
             res_dec_pc = PyntCloud.from_file(res_dec_pc_path)
             res_dec_points = res_dec_pc.points.shape[0]
             
-            bpp = cur_com_bytes * 8. / ori_num_points
+            bpp = com_bytes * 8. / ori_num_points
             print(bpp)
             if 'vox9' in ori_file:
                 resolution = 511
@@ -1083,23 +1077,17 @@ def main(args):
                 resolution = 1023
             print(ori_file, resolution)
 
-            color_space = 'rgb'
-            if color_space == 'yuv':
-                colorspace = 1
-            elif color_space == 'rgb':
-                colorspace = 0
-
-            g_metric_D1, g_metric_D2, c_metric_ch1, c_metric_ch2, c_metric_ch3, c_metric = evaluate_pc(ori_pc_path, res_dec_pc_path, nor_pc_path, resolution, colorspace)
+            g_metric_D1, g_metric_D2 = evaluate_pc(ori_pc_path, res_dec_pc_path, nor_pc_path, resolution)
             
             ori_num_points = int(ori_num_points)
             res_dec_points = int(res_dec_points)
-            cur_com_bytes = int(cur_com_bytes)
+            com_bytes = int(com_bytes)
             
-            bitrate_df.loc[idx] = [ori_file, ori_num_points, res_dec_points, cur_com_bytes, bpp, g_metric_D1, g_metric_D2, c_metric_ch1, c_metric_ch2, c_metric_ch3, c_metric]       
+            bitrate_df.loc[idx] = [ori_file, ori_num_points, res_dec_points, com_bytes, bpp, g_metric_D1, g_metric_D2]       
 
         pd.set_option('display.max_columns', None)    
         print(bitrate_df)
-        bitrate_df.to_csv(output_file)
+        bitrate_df.to_csv(output_file, index=False)
             
         
 
