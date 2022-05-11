@@ -20,7 +20,7 @@ from pyntcloud import PyntCloud
 from src.partition import partition_pc
 from src.processing import load_pc, pc_to_tf, process_x, create_dataset
 from src.compression_utilities import pack_tensor, unpack_tensor, unpack_pc_bitstream, get_pc_header, po2po, compute_optimal_threshold
-from src.evaluate import merge_pc, evaluate_pc
+from src.evaluate import evaluate_pc
 from absl import app
 from absl.flags import argparse_flags
 import tensorflow_compression as tfc
@@ -673,7 +673,7 @@ def decompress(args):
     # Load the model and determine the dtypes of tensors required to decompress.
     model = tf.keras.models.load_model(os.path.join(args.model_path, args.experiment))
         
-    # Load the .tfci files to decompress.
+    # Load the .bin files to decompress.
     #files = pc_io.get_files(args.input_glob)[:args.input_length]
     files = pc_io.get_files(args.input_glob)
 
@@ -897,13 +897,13 @@ def parse_args(argv, mode='compress'):
         compress_cmd = subparsers.add_parser(
             'compress',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            description='Reads a PLY file, compresses it, and writes a TFCI file.')
+            description='Reads a PLY file, compresses it, and writes a BIN file.')
 
         # 'decompress' subcommand.
         decompress_cmd = subparsers.add_parser(
             'decompress',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            description='Reads a .tfci file, reconstructs the block,'
+            description='Reads a .bin file, reconstructs the block,'
                         ' and writes back a PLY file.')
         decompress_cmd.add_argument(
             '--ori_dir',
@@ -922,7 +922,7 @@ def parse_args(argv, mode='compress'):
 
 
     # Arguments for both 'compress' and 'decompress'.
-        for cmd, ext in ((compress_cmd, '.tfci'), (decompress_cmd, '.ply')):
+        for cmd, ext in ((compress_cmd, '.bin'), (decompress_cmd, '.ply')):
             cmd.add_argument(
                 '--input_glob',
                 help='Input directory.')
@@ -973,7 +973,12 @@ def parse_args(argv, mode='compress'):
         evaluate_cmd.add_argument(
             '--output_dir',
             help='Directory where to save the results of the evaluation.')
-
+        evaluate_cmd.add_argument(
+            '--pc_error_path',
+            help='Path to the binary of MPEG evaluation metric software.')
+        evaluate_cmd.add_argument(
+                '--resolution',
+                type=int, help='Resolution of the evaluated point clouds.', default=1023)
 
       
         args = parser.parse_args(argv[1:])
@@ -990,7 +995,7 @@ def main(args):
         
     elif args.command == 'compress':
         if not args.output_dir:
-            args.output_file = args.input_glob + '.tfci'
+            args.output_file = args.input_glob + '.bin'
         if not args.gpu:
             with tf.device('/cpu:0'):
                 compress(args)
@@ -1027,7 +1032,7 @@ def main(args):
         assert os.path.exists(os.path.join(args.dec_dir, args.experiment)), 'Input directory with decompressed point clouds not found'
         assert os.path.exists(args.nor_dir), 'Input directory with original point cloud with normal attributes not found'
         assert os.path.exists(args.bin_dir), 'Input directory with compressed point cloud binaries not found'
-        assert os.path.exists('pc_error'), 'pc_error utility not found'
+        assert os.path.exists(args.pc_error_path), 'pc_error utility not found'
         if not os.path.isdir(args.output_dir):
             os.mkdir(args.output_dir)
         output_file = os.path.join(args.output_dir, args.experiment + '.csv')
@@ -1070,14 +1075,8 @@ def main(args):
             res_dec_points = res_dec_pc.points.shape[0]
             
             bpp = com_bytes * 8. / ori_num_points
-            print(bpp)
-            if 'vox9' in ori_file:
-                resolution = 511
-            else:
-                resolution = 1023
-            print(ori_file, resolution)
 
-            g_metric_D1, g_metric_D2 = evaluate_pc(ori_pc_path, res_dec_pc_path, nor_pc_path, resolution)
+            g_metric_D1, g_metric_D2 = evaluate_pc(ori_pc_path, res_dec_pc_path, nor_pc_path, args.resolution, args.pc_error_path)
             
             ori_num_points = int(ori_num_points)
             res_dec_points = int(res_dec_points)
@@ -1088,9 +1087,6 @@ def main(args):
         pd.set_option('display.max_columns', None)    
         print(bitrate_df)
         bitrate_df.to_csv(output_file, index=False)
-            
-        
-
 
 if __name__ == '__main__':
     app.run(main, flags_parser=parse_args)

@@ -26,7 +26,7 @@ python point_cloud_compression_slice_conditioning.py -h
 
 ### Training
 
-The model can be trained by passing the keyword *train* to the main script. A training dataset must be already partitioned into blocks with partition size given by *--resolution*. An example command can be seen down below, using lambda = 1000, 5 slices for latent partition and training block resolution of 64:
+The model can be trained by passing the keyword *train* to the main script. A training dataset must be already partitioned into blocks with partition size given by `--resolution`. An example command can be seen down below, using lambda = 1000, 5 slices for latent partition and training block resolution of 64:
 
 ```bash
 python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' train --train_glob '/train/blocks_64_rgb/*.ply' --resolution 64 --epochs 10 --lambda 1000 --num_slices 5
@@ -84,15 +84,15 @@ python point_cloud_compression_slice_conditioning.py decompress -h
 
 ### Evaluation
 
-The compression of point clouds can be evaluated through the computation of the bitrate per input point as well as through objective metrics D1 and D2 PSNR calculated between the original and decompressed point clouds. For that, the code from MPEG evaluation metric software must be built and the path to the generated binary should be specified by the parameter *--pc_error_path*. Moreover, versions of the original point clouds with normal vectors must available for the computation of the D2 PSNR metric. 
+The compression of point clouds can be evaluated through the computation of the bitrate per input point as well as through objective metrics D1 and D2 PSNR calculated between the original and decompressed point clouds. For that, the code from MPEG evaluation metric software must be built and the path to the generated binary should be specified by the parameter `--pc_error_path`. Moreover, versions of the original point clouds with normal vectors must available for the computation of the D2 PSNR metric. 
 
 The following command can be used for the evaluation of the test dataset compressed with one compression model:
 
 ```bash
-python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' evaluate --ori_dir 'original/pointclouds_rgb/' --dec_dir 'decompressed/' --nor_dir 'original/pointclouds_rgb_n/' --bin_dir 'compressed/' --output_dir 'results/' --pc_error_path 'pc_error'
+python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' evaluate --ori_dir 'original/pointclouds_rgb/' --dec_dir 'decompressed/' --nor_dir 'original/pointclouds_rgb_n/' --bin_dir 'compressed/' --output_dir 'results/' --pc_error_path 'pc_error' --resolution 1023
 ```
 
-The resulting bitrate and metric values are stored in a csv file saved in the folder given by *--output_dir*. For a list of all the evaluation parameters, run:
+The resulting bitrate and metric values are stored in a csv file saved in the folder given by `--output_dir`. For a list of all the evaluation parameters, run:
 
 ```bash
 python point_cloud_compression_slice_conditioning.py evaluate -h
@@ -106,4 +106,4 @@ It is recommended to use the CPU to compress/decompress rather than the GPU. Com
 J. Ballé, N. Johnston, D. Minnen,
 ["Integer Networks for data compression with latent-variable models"](https://openreview.net/pdf?id=S1zz2i0cY7)
 
-If you wish to use the GPU anyway, use the keyword `'--gpu'` in the compress/decompress parser. Furthermore, the `'--debug'` argument in the decompress parser will try to get rid of the errors by retrying the decompression until they don't appear. The minimum tolerable error may have to be set manually, depending on the target bpp and the nature of the point cloud.
+If you wish to use the GPU anyway, use the keyword `--gpu` in the compress/decompress parser. Furthermore, the `--debug` argument in the decompress parser will try to get rid of the errors by retrying the decompression until they don't appear. The minimum tolerable error may have to be set manually, depending on the target bpp and the nature of the point cloud.
