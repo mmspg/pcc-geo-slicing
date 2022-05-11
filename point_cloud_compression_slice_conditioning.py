@@ -682,18 +682,21 @@ def decompress(args):
     # Prepare the original files for debugging if requested.
     if args.debug:
         assert args.ori_input_glob is not None, 'Please specify the path to the uncompressed blocks for debugging'
-        original = pc_io.get_files(args.ori_input_glob)[:args.input_length]
+        original = pc_io.get_files(args.ori_input_glob)
         assert len(original) > 0, 'No original files found'
         
-        p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(
-            args.resolution, args.channels_last)
-        points = pc_io.load_points(original[:args.input_length], p_min, p_max)
+        # p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(
+        #     args.resolution, args.channels_last)
+        # points = pc_io.load_points(original, p_min, p_max)
     
 
     print('Starting decompression...')
-    tqdm_handle = tqdm(files, total=len(files))
+    tqdm_handle = tqdm(enumerate(files), total=len(files))
     start = time.time()
-    for bin_filepath in tqdm_handle:
+    for n, bin_filepath in tqdm_handle:
+
+        if args.debug:
+            original_blocks = partition_pc(original[n], args.resolution, 0, True):
         
         # Read the shape information and compressed string from the binary file,
         # and decompress the blocks using the model.
@@ -746,7 +749,7 @@ def decompress(args):
                 max_retries = 200
                 
                 # Check that the correct files are being compared.
-                assert dec.split('/')[-1][:-5] == sorted(original)[i].split('/')[-1][:-4], 'The original file is not the same as the decompressed one'
+                assert original_blocks[i][1] == block_position, 'The original file is not the same as the decompressed one'
                 retry = 0
                 
                 # Redo decompression as long as it fails and max_retries
@@ -756,18 +759,16 @@ def decompress(args):
                         break
                     
                     # Compute the D1 metric to spot decompression issues.
-                    mse = po2po(points[i][:,:3], pa)
+                    mse = po2po(original_blocks[i][:,:3], pa)
                     print('Mse for block ' + str(i) + ': ' + str(mse))
                     
                     # Depending on the PC and the target bpp, different
                     # values of mse should be experimented there.
-                    if mse <= 50 and i > 30:
-                        failed = False
-                    elif mse <= 10000000 and i <= 30:
+                    if mse <= 50:
                         failed = False
                     else:
                         retry += 1
-                        print('Decompression of block ' + str(i) + ' failed, retrying. Attempt number ' + str(retry))
+                        print(f'Decompression of block from position {block_position} from point cloud {original[n]} failed, retrying. Attempt number ' + str(retry))
                         x_hat = model.decompress(*tensors).numpy()
                         pa = np.argwhere(x_hat[...,0] > threshold).astype('float32')
                      
