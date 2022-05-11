@@ -41,7 +41,7 @@ def pc_to_tf(points, dense_tensor_shape, channels_last=False):
     """
                         
     x = points
-        
+
     paddings = [[0, 0], [1, 0]] if not channels_last else [[0, 0], [0, 1]]
     geo_indices = tf.pad(x[:, :3], paddings, constant_values=0)
         

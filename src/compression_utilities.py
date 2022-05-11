@@ -2,7 +2,7 @@ import scipy.spatial
 import numpy as np
 import tensorflow as tf
   
-def pack_tensor(threshold, x_shape, y_shape, z_shape, z_string, *y_strings,  bytes_length = 2, adaptive = False):
+def pack_tensor(threshold, position, x_shape, y_shape, z_shape, z_string, *y_strings,  bytes_length = 2, adaptive = False):
     """
     Transforms the compression results into a bitstream for 
     transmission towards the decoder.
@@ -20,7 +20,7 @@ def pack_tensor(threshold, x_shape, y_shape, z_shape, z_string, *y_strings,  byt
 
     Output: A bitstream ready to be written to a file.
     """
-    
+
     # Transform the shapes into strings.
     shape_strings = [bytes(x_shape.numpy().tolist()), bytes(y_shape.numpy().tolist()), bytes(z_shape.numpy().tolist())]
   
@@ -31,20 +31,24 @@ def pack_tensor(threshold, x_shape, y_shape, z_shape, z_string, *y_strings,  byt
     else:
       length_slices = [len(np.squeeze(y_strings[0]).tolist()).to_bytes(bytes_length, byteorder = 'little')]
       y_strings = y_strings[0].numpy().tolist()
+
+    block_position_bytes = b"".join([x.to_bytes(1, byteorder = 'little') for x in position])
+    num_slices_bytes = len(y_strings).to_bytes(1, byteorder = 'little')
   
     #Concatenate every part together.
-    bitstream = len(shape_strings[0]).to_bytes(1, byteorder = 'little') + \
-    len(shape_strings[1]).to_bytes(1, byteorder = 'little') + \
-    len(shape_strings[2]).to_bytes(1, byteorder = 'little') + \
-    len(y_strings).to_bytes(1, byteorder = 'little') + b"".join(length_slices) + \
+    bitstream = block_position_bytes + num_slices_bytes + b"".join(length_slices) + \
     len(z_string.numpy()[0]).to_bytes(bytes_length, byteorder = 'little') + \
-    b"".join(shape_strings) +  z_string.numpy()[0] + b"".join(y_strings)
+    z_string.numpy()[0] + b"".join(y_strings)
   
     # Add the threshold at the end if adaptive, else it is known to be 0.5.  
     assert threshold <= 1 and threshold >= 0, "Threshold outside specified range"
     if adaptive:
         threshold = (np.round(threshold.numpy() * 100)).astype('uint8')
         bitstream = bitstream + bytes([threshold])
+
+
+
+    bitstream = len(bitstream).to_bytes(bytes_length, byteorder = 'little') + bitstream
 
     return bitstream
   
@@ -62,45 +66,73 @@ def unpack_tensor(bitstream, bytes_length = 2, adaptive = False):
     """
     
     # Recover #of characters of the shapes in bitstream.
-    x_shape_length = bitstream[0]
-    y_shape_length = bitstream[1]
-    z_shape_length = bitstream[2]
+    i_position = bitstream[0]
+    j_position = bitstream[1]
+    k_position = bitstream[2]
+
+    num_slices = bitstream[3]
   
     # Recover the slices metadata from the bitstream.
-    num_slices = bitstream[3]
-    slices_length = np.squeeze([np.fromstring(bitstream[4+(i-1)*bytes_length:i*bytes_length+4], dtype=np.int16).tolist() for i in range(1, num_slices+1)])
-    if num_slices == 1:
-      slices_length = np.expand_dims(slices_length, axis = -1)
+    parse_pos = 4
+
+    slices_length = [int.from_bytes(bitstream[parse_pos:][i*bytes_length:(i+1)*bytes_length], byteorder = 'little') for i in range(num_slices)]
+
+    #if num_slices == 1:
+    #  slices_length = np.expand_dims(slices_length, axis = -1)
   
+    parse_pos += bytes_length * num_slices
+
     # Recover #of characters of the z string from the bitstream.
-    length_z_string = int(np.fromstring(bitstream[num_slices*bytes_length+4:(num_slices+1)*bytes_length+4],dtype=np.int16))
-  
-    # Recover the shapes from the bitstream.
-    x_shape = np.fromstring(bitstream[(num_slices+1)*bytes_length+4:][:x_shape_length], dtype=np.uint8)
-    y_shape = np.fromstring(bitstream[(num_slices+1)*bytes_length+4+x_shape_length:][:y_shape_length], dtype=np.uint8)
-    z_shape = np.fromstring(bitstream[(num_slices+1)*bytes_length+4+x_shape_length+y_shape_length:][:z_shape_length], dtype=np.uint8)
+    length_z_string = int.from_bytes(bitstream[parse_pos:][:bytes_length], byteorder = 'little')
+    parse_pos += bytes_length
   
     # Recover the z string from the bitstream.
-    z_string = [bitstream[(num_slices+1)*bytes_length+4+x_shape_length+y_shape_length+z_shape_length:][:length_z_string]]
+    z_string = tf.constant(bitstream[parse_pos:][:length_z_string], dtype=tf.string, shape=(1,))
+    parse_pos += length_z_string
   
     y_strings = []
-    left = len(bitstream) - ((num_slices+1)*bytes_length+4+x_shape_length+y_shape_length+z_shape_length+length_z_string)
 
-    # Recover the y strings from the bitstream.
-    for i in range(num_slices):
-      if i == 0:
-        y_string = [bitstream[(num_slices+1)*bytes_length+4+x_shape_length+y_shape_length+z_shape_length+length_z_string:][:slices_length[i]]]
-      else:
-        y_string =[bitstream[(num_slices+1)*bytes_length+4+x_shape_length+y_shape_length+z_shape_length+length_z_string+np.sum(slices_length[:i]):][:slices_length[i]]]
-      y_strings.append(y_string)
+    for slice_length in slices_length:
+        y_strings.append(tf.constant(bitstream[parse_pos:][:slice_length], dtype=tf.string, shape=(1,)))
+        parse_pos += slice_length
   
     # Recover the threshold from the bistream if necessary.
     if adaptive:
-      threshold = bitstream[-1] / 100
+        threshold = bitstream[parse_pos]/ 100
+    else: 
+        threshold = 0.5
       
-      return (x_shape, y_shape, z_shape, z_string) + tuple(y_strings), threshold
-    else:
-      return (x_shape, y_shape, z_shape, z_string) + tuple(y_strings), 0.5
+    return z_string, tuple(y_strings), threshold, (i_position, j_position, k_position)
+
+
+def unpack_pc_bitstream(bitstream, bytes_length = 2):
+
+    block_bitstreams = []
+
+    resolution = bitstream[0]
+    adaptive = bool(bitstream[1])
+
+    parse_pos = 2
+
+    while parse_pos < len(bitstream):
+
+        block_length = np.fromstring(bitstream[parse_pos:][:bytes_length], dtype=np.uint16)[0]
+        parse_pos += bytes_length
+        block_bitstream = bitstream[parse_pos:][:block_length]
+        parse_pos += block_length
+
+        block_bitstreams.append(block_bitstream)
+
+    return resolution, adaptive, block_bitstreams
+
+def get_pc_header(resolution, adaptive):
+
+    header = resolution.to_bytes(1, byteorder = 'little') + adaptive.to_bytes(1, byteorder = 'little')
+
+    return header
+
+
+
 
 def po2po(block1_pc, block2_pc):
     """

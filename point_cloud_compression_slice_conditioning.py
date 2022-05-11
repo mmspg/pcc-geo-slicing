@@ -17,9 +17,9 @@ import numpy as np
 import pandas as pd
 from pyntcloud import PyntCloud
 
-
+from src.partition import partition_pc
 from src.processing import load_pc, pc_to_tf, process_x, create_dataset
-from src.compression_utilities import pack_tensor, unpack_tensor, po2po, compute_optimal_threshold
+from src.compression_utilities import pack_tensor, unpack_tensor, unpack_pc_bitstream, get_pc_header, po2po, compute_optimal_threshold
 from src.evaluate import merge_pc, evaluate_pc
 from absl import app
 from absl.flags import argparse_flags
@@ -618,35 +618,52 @@ def compress(args):
     # Load the blocks from the files.
     p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(
         args.resolution, args.channels_last)
-    points = pc_io.load_points(files[:args.input_length], p_min, p_max)
+    #points = pc_io.load_points(files[:args.input_length], p_min, p_max)
+
+    total_blocks = 0
+    tqdm_handle = tqdm(files)
 
     print('Starting compression...')
     start = time.time()
 
-    for i, pc in tqdm(enumerate(points), total=len(points)):
-        
-        # Process the input for the neural network.
-        tensor = pc_to_tf(pc, dense_tensor_shape, args.channels_last)
-        tensor = process_x(tensor, dense_tensor_shape)
+    for pc_filepath in tqdm_handle:
 
-        # Compress the input.
-        tensors = model.compress(tensor)
-        
-        # Calculate the adaptive threshold.
-        if args.adaptive:
-            best_threshold = compute_optimal_threshold(model, tensors, pc, delta_t = 0.01, breakpt = 150, verbose = 0)
-        else:
-            best_threshold = tf.constant(0.5)
+        pc_blocks = partition_pc(pc_filepath, args.resolution, 0, True)
+        pc_file = os.path.split(pc_filepath)[-1]
+
+        pc_bitstream = get_pc_header(args.resolution, args.adaptive)
+
+        for i, pc_block in enumerate(pc_blocks):
+
+            pc_block_geo = pc_block[0][:,:3]
+            pc_block_pos = pc_block[1]
             
-        # Write a binary file with the shape information and the compressed string.
-        bitstream = pack_tensor(best_threshold, *tensors, bytes_length = 2, adaptive = args.adaptive)
-        
+            # Process the input for the neural network.
+            tensor = pc_to_tf(pc_block_geo, dense_tensor_shape, args.channels_last)
+            tensor = process_x(tensor, dense_tensor_shape)
+
+            # Compress the input.
+            tensors = model.compress(tensor)
+            
+            # Calculate the adaptive threshold.
+            if args.adaptive:
+                best_threshold = compute_optimal_threshold(model, tensors, pc_block_geo, delta_t = 0.01, breakpt = 150, verbose = 0)
+            else:
+                best_threshold = tf.constant(0.5)
+                
+            # Write a binary file with the shape information and the compressed string.
+            block_bitstream = pack_tensor(best_threshold, pc_block_pos, *tensors, bytes_length = 2, adaptive = args.adaptive)
+
+            pc_bitstream += block_bitstream
+
+            tqdm_handle.set_description(f"Compressed {i+1}/{len(pc_blocks)} blocks of {pc_file}")
+            
+
         if not os.path.isdir(args.output_dir):
-            os.mkdir(args.output_dir)
-            
-        # Write the resulting bitstream in a file.
-        with open(os.path.join(args.output_dir, os.path.split(files[i])[-1][:-4] + '.tfci'), 'wb') as f:
-            f.write(bitstream)
+                os.mkdir(args.output_dir)
+
+        with open(os.path.join(args.output_dir, pc_file[:-4] + '.bin'), 'wb') as f:
+            f.write(pc_bitstream)
             
     print(f'Done. Total compression time: {time.time() - start}s')
 
@@ -657,7 +674,9 @@ def decompress(args):
     model = tf.keras.models.load_model(os.path.join(args.model_path, args.experiment))
         
     # Load the .tfci files to decompress.
-    files = pc_io.get_files(args.input_glob)[:args.input_length]
+    #files = pc_io.get_files(args.input_glob)[:args.input_length]
+    files = pc_io.get_files(args.input_glob)
+
     assert len(files) > 0, 'No input files found'
     
     # Prepare the original files for debugging if requested.
@@ -671,73 +690,98 @@ def decompress(args):
         points = pc_io.load_points(original[:args.input_length], p_min, p_max)
     
 
-    print('Starting decompression')
+    print('Starting decompression...')
+    tqdm_handle = tqdm(files, total=len(files))
     start = time.time()
-    for i, dec in enumerate(sorted(files)):
+    for bin_filepath in tqdm_handle:
         
         # Read the shape information and compressed string from the binary file,
         # and decompress the blocks using the model.
-        with open(dec, 'rb') as f:
-            bitstream = f.read()
-        tensors, threshold = unpack_tensor(bitstream, bytes_length = 2,
-                                               adaptive = args.adaptive)
-        x_hat = model.decompress(*tensors).numpy()
-        
-        # Transform the decompressed tensor into an occupancy map
-        # according to threshold.
-        pa = np.argwhere(x_hat[...,0] > threshold).astype('float32')
-        
-        # Compressing/decompressing a file using a GPU
-        # often induces errors that propagate and ruin the reconstruction.
-        # It is strongly recommended to run the compression/decompression
-        # on CPU for this reason. The following section might however
-        # help using a GPU by retrying the decompression until the
-        # reconstruction is done correctly. It is not guarenteed that
-        # it will happen.
-        # More information at:
-        # J. Ballé, N. Johnston, D. Minnen,
-        # "Integer Networks for data compression with latent-variable models"
-        # https://openreview.net/pdf?id=S1zz2i0cY7
-        if args.debug:
-            failed = True
-            max_retries = 200
+        with open(bin_filepath, 'rb') as f:
+            pc_bitstream = f.read()
+
+        bin_file = os.path.split(bin_filepath)[-1]
+        resolution, adaptive, block_bitstreams = unpack_pc_bitstream(pc_bitstream)
+
+        pa = np.zeros([0,3])
+
+        for i, block_bitstream in enumerate(block_bitstreams):
+
+            z_string, y_strings, threshold, block_position = unpack_tensor(block_bitstream, bytes_length = 2,
+                                                   adaptive = adaptive)
+
+            x_size = resolution
+            y_size = int(x_size / 8)
+            z_size = int(y_size / 2)
+
+            x_shape = tf.constant([x_size, x_size, x_size], dtype=tf.int32)
+            y_shape = tf.constant([y_size, y_size, y_size], dtype=tf.int32)
+            z_shape = tf.constant([z_size, z_size, z_size], dtype=tf.int32)
+
+            x_hat = model.decompress(x_shape, y_shape, z_shape, z_string, *y_strings).numpy()
             
-            # Check that the correct files are being compared.
-            assert dec.split('/')[-1][:-5] == sorted(original)[i].split('/')[-1][:-4], 'The original file is not the same as the decompressed one'
-            retry = 0
-            
-            # Redo decompression as long as it fails and max_retries
-            # is not reached.
-            while failed and retry <= max_retries:
-                if len(pa) == 0:
-                    break
+            # Transform the decompressed tensor into an occupancy map
+            # according to threshold.
+            block_pa = np.argwhere(x_hat[...,0] > threshold).astype('float32')
+            block_pa += np.asarray(block_position) * resolution
+
+            if pa.shape[0] == 0:
+                pa = block_pa
+            else:
+                pa = np.concatenate([pa, block_pa], axis=0)
+        
+            # Compressing/decompressing a file using a GPU
+            # often induces errors that propagate and ruin the reconstruction.
+            # It is strongly recommended to run the compression/decompression
+            # on CPU for this reason. The following section might however
+            # help using a GPU by retrying the decompression until the
+            # reconstruction is done correctly. It is not guarenteed that
+            # it will happen.
+            # More information at:
+            # J. Ballé, N. Johnston, D. Minnen,
+            # "Integer Networks for data compression with latent-variable models"
+            # https://openreview.net/pdf?id=S1zz2i0cY7
+            if args.debug:
+                failed = True
+                max_retries = 200
                 
-                # Compute the D1 metric to spot decompression issues.
-                mse = po2po(points[i][:,:3], pa)
-                print('Mse for block ' + str(i) + ': ' + str(mse))
+                # Check that the correct files are being compared.
+                assert dec.split('/')[-1][:-5] == sorted(original)[i].split('/')[-1][:-4], 'The original file is not the same as the decompressed one'
+                retry = 0
                 
-                # Depending on the PC and the target bpp, different
-                # values of mse should be experimented there.
-                if mse <= 50 and i > 30:
-                    failed = False
-                elif mse <= 10000000 and i <= 30:
-                    failed = False
-                else:
-                    retry += 1
-                    print('Decompression of block ' + str(i) + ' failed, retrying. Attempt number ' + str(retry))
-                    x_hat = model.decompress(*tensors).numpy()
-                    pa = np.argwhere(x_hat[...,0] > threshold).astype('float32')
+                # Redo decompression as long as it fails and max_retries
+                # is not reached.
+                while failed and retry <= max_retries:
+                    if len(pa) == 0:
+                        break
+                    
+                    # Compute the D1 metric to spot decompression issues.
+                    mse = po2po(points[i][:,:3], pa)
+                    print('Mse for block ' + str(i) + ': ' + str(mse))
+                    
+                    # Depending on the PC and the target bpp, different
+                    # values of mse should be experimented there.
+                    if mse <= 50 and i > 30:
+                        failed = False
+                    elif mse <= 10000000 and i <= 30:
+                        failed = False
+                    else:
+                        retry += 1
+                        print('Decompression of block ' + str(i) + ' failed, retrying. Attempt number ' + str(retry))
+                        x_hat = model.decompress(*tensors).numpy()
+                        pa = np.argwhere(x_hat[...,0] > threshold).astype('float32')
                      
-        
+            tqdm_handle.set_description(f"Decompressed {i+1}/{len(block_bitstreams)} blocks of {bin_file}")
+
         if not os.path.isdir(args.output_dir):
             os.mkdir(args.output_dir)
         
         # Write the reconstructed block in a PLY file.
-        pc_io.write_df(os.path.join(args.output_dir, os.path.split(dec)[-1][:-5] + '.ply'), pc_io.pa_to_df(pa))
+        pc_io.write_df(os.path.join(args.output_dir, os.path.split(bin_filepath)[-1][:-4] + '.ply'), pc_io.pa_to_df(pa))
             
             
-        if (i+1) % 50 == 0:
-            print(f'Decompressed {i+1} files out of {len(files)}')
+        #if (i+1) % 50 == 0:
+        #    print(f'Decompressed {i+1} files out of {len(files)}')
     print(f'Done. Total decompression time: {time.time() - start}s')
 
 
@@ -962,21 +1006,21 @@ def main(args):
         else:
             decompress(args)
             
-        assert args.resolution > 0, 'block_size must be positive'
-        args.ori_dir = os.path.normpath(args.ori_dir)
-        assert os.path.exists(args.ori_dir), 'Input directory with original (not compressed) point clouds not found'
+        # assert args.resolution > 0, 'block_size must be positive'
+        # args.ori_dir = os.path.normpath(args.ori_dir)
+        # assert os.path.exists(args.ori_dir), 'Input directory with original (not compressed) point clouds not found'
 
-        ori_files = sorted([f for f in os.listdir(args.ori_dir) if '.ply' in f])
-        print(f'There are {len(ori_files)} .ply files.')
+        # ori_files = sorted([f for f in os.listdir(args.ori_dir) if '.ply' in f])
+        # print(f'There are {len(ori_files)} .ply files.')
 
-        div_files = sorted([f for f in os.listdir(args.output_dir) if '.ply' in f])
-        print(f'There are {len(div_files)} divided .ply files.')
+        # div_files = sorted([f for f in os.listdir(args.output_dir) if '.ply' in f])
+        # print(f'There are {len(div_files)} divided .ply files.')
 
-        os.makedirs(args.reconstructed_dir, exist_ok=True)
-        tqdm_handle = tqdm(ori_files)
+        # os.makedirs(args.reconstructed_dir, exist_ok=True)
+        # tqdm_handle = tqdm(ori_files)
 
-        for ori_file in tqdm_handle:
-            merge_pc(ori_file, div_files, args.resolution, args.output_dir, os.path.join(args.reconstructed_dir, args.experiment))
+        # for ori_file in tqdm_handle:
+        #     merge_pc(ori_file, div_files, args.resolution, args.output_dir, os.path.join(args.reconstructed_dir, args.experiment))
             
     elif args.command == 'evaluate':
         assert os.path.exists(args.ori_dir), 'Input directory with original point cloud not found'
