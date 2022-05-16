@@ -659,8 +659,8 @@ def compress(args):
             tqdm_handle.set_description(f"Compressed {i+1}/{len(pc_blocks)} blocks of {pc_file}")
             
 
-        if not os.path.isdir(args.output_dir):
-                os.mkdir(args.output_dir)
+        if not os.path.isdir(os.path.join(args.output_dir, args.experiment)):
+                os.mkdir(os.path.join(args.output_dir, args.experiment))
 
         with open(os.path.join(args.output_dir, args.experiment, pc_file[:-4] + '.bin'), 'wb') as f:
             f.write(pc_bitstream)
@@ -696,7 +696,7 @@ def decompress(args):
     for n, bin_filepath in tqdm_handle:
 
         if args.debug:
-            original_blocks = partition_pc(original[n], args.resolution, 0, True):
+            original_blocks = partition_pc(original[n], args.resolution, 0, True)
         
         # Read the shape information and compressed string from the binary file,
         # and decompress the blocks using the model.
@@ -774,8 +774,8 @@ def decompress(args):
                      
             tqdm_handle.set_description(f"Decompressed {i+1}/{len(block_bitstreams)} blocks of {bin_file}")
 
-        if not os.path.isdir(args.output_dir):
-            os.mkdir(args.output_dir)
+        if not os.path.isdir(os.path.join(args.output_dir, args.experiment)):
+            os.mkdir(os.path.join(args.output_dir, args.experiment))
         
         # Write the reconstructed block in a PLY file.
         pc_io.write_df(os.path.join(args.output_dir, args.experiment, os.path.split(bin_filepath)[-1][:-4] + '.ply'), pc_io.pa_to_df(pa))

@@ -29,7 +29,7 @@ python point_cloud_compression_slice_conditioning.py -h
 The model can be trained by passing the keyword *train* to the main script. A training dataset must be already partitioned into blocks with partition size given by `--resolution`. An example command can be seen down below, using lambda = 1000, 5 slices for latent partition and training block resolution of 64:
 
 ```bash
-python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' train --train_glob '/train/blocks_64_rgb/*.ply' --resolution 64 --epochs 10 --lambda 1000 --num_slices 5
+python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' train --train_glob 'train/blocks_64_rgb/*.ply' --resolution 64 --epochs 10 --lambda 1000 --num_slices 5
 ```
 
 For a list of all the training parameters that can be changed, run:
@@ -56,7 +56,7 @@ The pre-trained models can be found in the folder **pcc-geo-slicing/models**.
 In order to compress a test set, the user can pass the keyword *compress* to the main script. The command below is an example that can be used to compress a dataset with block resolution 128 using adaptive thresholding:
 
 ```bash
-python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' compress --adaptive --resolution 128 --input_glob '/original/pointclouds_rgb/*.ply' --output_dir 'compressed/' 
+python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' compress --adaptive --resolution 128 --input_glob 'original/pointclouds_rgb/*.ply' --output_dir 'compressed/' 
 ```
 
 Please note that a different block resolution can be used for training and for testing. 
@@ -72,7 +72,7 @@ python point_cloud_compression_slice_conditioning.py compress -h
 In order to compress a test set, the user can pass the keyword *decompress* to the main script. An example comand can be found here below:
 
 ```bash
-python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' decompressed --input_glob 'compressed/*.bin' --output_dir 'decompressed/'
+python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' decompress --input_glob 'compressed/*.bin' --output_dir 'decompressed/'
 ```
 
 For a list of all the decompression parameters, run:
@@ -106,4 +106,4 @@ It is recommended to use the CPU to compress/decompress rather than the GPU. Com
 J. Ballé, N. Johnston, D. Minnen,
 ["Integer Networks for data compression with latent-variable models"](https://openreview.net/pdf?id=S1zz2i0cY7)
 
-If you wish to use the GPU anyway, use the keyword `--gpu` in the compress/decompress parser. Furthermore, the `--debug` argument in the decompress parser will try to get rid of the errors by retrying the decompression until they don't appear. The minimum tolerable error may have to be set manually, depending on the target bpp and the nature of the point cloud.
+If you wish to use the GPU anyway, use the keyword `--gpu` in the compress/decompress parser. Furthermore, the `--debug` argument in the decompress parser will try to avoid such reconstruction error by retrying the decompression until the distortion between the decompressed and the original block is under a threshold, which has to be set manually in the code.
