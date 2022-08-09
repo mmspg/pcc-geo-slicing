@@ -675,7 +675,7 @@ def decompress(args):
         
     # Load the .bin files to decompress.
     #files = pc_io.get_files(args.input_glob)[:args.input_length]
-    files = pc_io.get_files(args.input_glob)
+    files = pc_io.get_files(os.path.join(args.input_glob, args.experiment))
 
     assert len(files) > 0, 'No input files found'
     
@@ -899,6 +899,9 @@ def parse_args(argv, mode='compress'):
             'compress',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             description='Reads a PLY file, compresses it, and writes a BIN file.')
+        compress_cmd.add_argument(
+                '--adaptive', action='store_true',
+                help='Use adaptive thresholding.')
 
         # 'decompress' subcommand.
         decompress_cmd = subparsers.add_parser(
@@ -936,9 +939,6 @@ def parse_args(argv, mode='compress'):
             cmd.add_argument(
                 '--output_dir', nargs='?',
                 help='Output directory.')
-            cmd.add_argument(
-                '--adaptive', action='store_true',
-                help='Use adaptive thresholding.')
             cmd.add_argument(
                 '--channels_last', default=True,
                 help='Use channels last instead of channels first.')

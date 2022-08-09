@@ -32,6 +32,8 @@ The model can be trained by passing the keyword *train* to the main script. A tr
 python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' train --train_glob 'train/blocks_64_rgb/*.ply' --resolution 64 --epochs 10 --lambda 1000 --num_slices 5
 ```
 
+Training requires the dataset to be already partitioned into blocks. The user can partition any given dataset containing voxelized point clouds with the script partition.py under the folder src. 
+
 For a list of all the training parameters that can be changed, run:
 
 ```bash
