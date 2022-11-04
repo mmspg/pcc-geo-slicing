@@ -660,7 +660,7 @@ def compress(args):
             
 
         if not os.path.isdir(os.path.join(args.output_dir, args.experiment)):
-                os.mkdir(os.path.join(args.output_dir, args.experiment))
+            os.mkdir(os.path.join(args.output_dir, args.experiment))
 
         with open(os.path.join(args.output_dir, args.experiment, pc_file[:-4] + '.bin'), 'wb') as f:
             f.write(pc_bitstream)
@@ -675,7 +675,7 @@ def decompress(args):
         
     # Load the .bin files to decompress.
     #files = pc_io.get_files(args.input_glob)[:args.input_length]
-    files = pc_io.get_files(os.path.join(args.input_glob, args.experiment))
+    files = pc_io.get_files(os.path.join(args.input_dir, args.experiment, "*.bin"))
 
     assert len(files) > 0, 'No input files found'
     
@@ -784,6 +784,7 @@ def decompress(args):
         #if (i+1) % 50 == 0:
         #    print(f'Decompressed {i+1} files out of {len(files)}')
     print(f'Done. Total decompression time: {time.time() - start}s')
+
 
 
 def parse_args(argv, mode='compress'):
@@ -902,6 +903,9 @@ def parse_args(argv, mode='compress'):
         compress_cmd.add_argument(
                 '--adaptive', action='store_true',
                 help='Use adaptive thresholding.')
+        compress_cmd.add_argument(
+                '--input_glob',
+                help='Input pattern.')
 
         # 'decompress' subcommand.
         decompress_cmd = subparsers.add_parser(
@@ -909,6 +913,9 @@ def parse_args(argv, mode='compress'):
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             description='Reads a .bin file, reconstructs the block,'
                         ' and writes back a PLY file.')
+        decompress_cmd.add_argument(
+                '--input_dir',
+                help='Input directory.')
         decompress_cmd.add_argument(
             '--ori_dir',
             help='Directory containing the original unpartitioned point clouds.')
@@ -925,11 +932,9 @@ def parse_args(argv, mode='compress'):
 
 
 
+
     # Arguments for both 'compress' and 'decompress'.
         for cmd, ext in ((compress_cmd, '.bin'), (decompress_cmd, '.ply')):
-            cmd.add_argument(
-                '--input_glob',
-                help='Input directory.')
             cmd.add_argument(
                 '--input_length', type=int, default=None,
                 help='Number of files to process.')
