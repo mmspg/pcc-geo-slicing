@@ -74,7 +74,7 @@ python point_cloud_compression_slice_conditioning.py compress -h
 In order to compress a test set, the user can pass the keyword *decompress* to the main script. An example comand can be found here below:
 
 ```bash
-python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' decompress --input_glob 'compressed/*.bin' --output_dir 'decompressed/'
+python point_cloud_compression_slice_conditioning.py --experiment 'PCC_5slices_lmbda1000' --model_path 'models/' decompress --input_dir 'compressed/' --output_dir 'decompressed/'
 ```
 
 For a list of all the decompression parameters, run:
